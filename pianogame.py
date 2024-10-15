@@ -14,21 +14,26 @@ pygame.mixer.init()
 
 # Load piano sounds for white and black keys
 white_sounds = [
-    pygame.mixer.Sound('C.wav'),    # C
-    pygame.mixer.Sound('D.wav'),    # D
-    pygame.mixer.Sound('E.wav'),    # E
-    pygame.mixer.Sound('F.wav'),    # F
-    pygame.mixer.Sound('G.wav'),    # G
-    pygame.mixer.Sound('A.wav'),    # A
-    pygame.mixer.Sound('B.wav')     # B
+    pygame.mixer.Sound('C.wav'),   # C
+    pygame.mixer.Sound('D.wav'),   # D
+    pygame.mixer.Sound('E.wav'),   # E
+    pygame.mixer.Sound('F.wav'),   # F
+    pygame.mixer.Sound('G.wav'),   # G
+    pygame.mixer.Sound('A.wav'),   # A
+    pygame.mixer.Sound('B.wav'),   # B
+    pygame.mixer.Sound('C2.wav'),  # C2
+    pygame.mixer.Sound('D2.wav'),  # D2
+    pygame.mixer.Sound('E2.wav')   # E2
 ]
 
 black_sounds = [
-    pygame.mixer.Sound('C#.wav'),   # C#
-    pygame.mixer.Sound('D#.wav'),   # D#
-    pygame.mixer.Sound('F#.wav'),   # F#
-    pygame.mixer.Sound('G#.wav'),   # G#
-    pygame.mixer.Sound('A#.wav')    # A#
+    pygame.mixer.Sound('C#.wav'),  # C#
+    pygame.mixer.Sound('D#.wav'),  # D#
+    pygame.mixer.Sound('F#.wav'),  # F#
+    pygame.mixer.Sound('G#.wav'),  # G#
+    pygame.mixer.Sound('A#.wav'),  # A#
+    pygame.mixer.Sound('C#2.wav'), # C#2
+    pygame.mixer.Sound('D#2.wav')  # D#2
 ]
 
 # Open the webcam and set the resolution to 1920x1080
@@ -40,121 +45,115 @@ cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 fingertips_indices = [4, 8, 12, 16, 20]
 
 # Store the state of pressed keys
-key_pressed_state = [False] * (14 + 5 + 14 + 5)  # 14 white + 5 black in each octave
-
-# Store the time when each key was last pressed
-key_press_timestamps = [0] * len(key_pressed_state)
+num_white_keys = 10  # Adjusted to match the second code
+num_black_keys = 7
+key_pressed_state = [False] * (num_white_keys + num_black_keys)
 
 # Store the key being pressed by each finger
 finger_on_key = [-1] * len(fingertips_indices)
 
 # Minimum time to allow repeated sound
-key_delay = 5.0  # 5 seconds
+key_delay = 0.5  # 0.5 second delay between re-pressing the same key
+
+# Track which key was played last by each finger and when
+last_played_time = [0] * (num_white_keys + num_black_keys)
 
 def check_key_press(x, y, white_keys, black_keys, white_key_height, black_key_height):
-    # Check white keys
+    # Increased detection range for white keys
     for i, (x_start, x_end) in enumerate(white_keys):
-        if x_start < x < x_end and y < white_key_height:  # White key area
+        if x_start < x < x_end and y < white_key_height + 50:
             return i
-    # Check black keys
+    # Increased detection range for black keys
     for i, (x_start, x_end) in enumerate(black_keys):
-        if x_start < x < x_end and y < black_key_height:
+        if x_start < x < x_end and y < black_key_height + 50:
             return i + len(white_keys)
     return None
 
+# Main loop
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
 
     frame = cv2.flip(frame, 1)
-    h, w, _ = frame.shape  # Get the webcam frame dimensions
+    h, w, _ = frame.shape
 
-    # Dynamically calculate key sizes based on the frame width
-    num_white_keys = 14  # Two octaves (7 keys per octave)
-    white_key_width = w // num_white_keys  # Dynamically adjust white key width
-    white_key_height = h // 3  # Set white key height to 1/3 of frame height
-    black_key_height = int(white_key_height * 0.65)  # Black key height is 65% of white key height
-    black_key_width = white_key_width // 2  # Black key is half the width of white keys
+    # Define key sizes and positions based on the image layout
+    white_key_width = w // 10  # 10 white keys
+    white_key_height = h // 3
+    black_key_width = int(white_key_width * 0.6)  # Black keys are about 60% the width of white keys
+    black_key_height = int(white_key_height * 0.6)
 
-    # Define white and black key ranges for two octaves
+    # Define white key positions
     white_keys = [(i * white_key_width, (i + 1) * white_key_width) for i in range(num_white_keys)]
+
+    # Define black key positions
     black_keys = [
-        (int(0.75 * white_key_width), int(1.25 * white_key_width)),  # C#
-        (int(1.75 * white_key_width), int(2.25 * white_key_width)),  # D#
-        (int(3.75 * white_key_width), int(4.25 * white_key_width)),  # F#
-        (int(4.75 * white_key_width), int(5.25 * white_key_width)),  # G#
-        (int(5.75 * white_key_width), int(6.25 * white_key_width)),  # A#
-        (int(7.75 * white_key_width), int(8.25 * white_key_width)),  # C#2
-        (int(8.75 * white_key_width), int(9.25 * white_key_width)),  # D#2
-        (int(10.75 * white_key_width), int(11.25 * white_key_width)),  # F#2
-        (int(11.75 * white_key_width), int(12.25 * white_key_width)),  # G#2
-        (int(12.75 * white_key_width), int(13.25 * white_key_width))   # A#2
+        (int((i + 0.75) * white_key_width), int((i + 1.25) * white_key_width))
+        for i in [0, 1, 3, 4, 5, 7, 8]  # Positions of black keys in an octave
     ]
 
-    # Convert the frame to RGB
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # Process the frame to detect hands
     result = hands.process(rgb_frame)
 
-    # Draw white piano keys (on the top of the frame)
+    # Draw white piano keys
     for i, (x_start, x_end) in enumerate(white_keys):
-        color = (255, 255, 255)  # Default color for white keys
+        color = (255, 255, 255)  # Default white color
         if key_pressed_state[i]:
-            color = (192, 192, 192)  # Grey when pressed
-        cv2.rectangle(frame, (x_start, 0), (x_end, white_key_height), color, -1)  # Keys at the top
-        cv2.rectangle(frame, (x_start, 0), (x_end, white_key_height), (0, 0, 0), 2)  # Key border
+            color = (192, 192, 192)  # Change to grey when pressed
+        cv2.rectangle(frame, (x_start, 0), (x_end, white_key_height), color, -1)
+        cv2.rectangle(frame, (x_start, 0), (x_end, white_key_height), (0, 0, 0), 2)  # Borders
 
-    # Draw black piano keys (on top of the white keys)
+    # Draw black piano keys
     for i, (x_start, x_end) in enumerate(black_keys):
-        color = (0, 0, 0)  # Default color for black keys
-        if key_pressed_state[i + len(white_keys)]:
-            color = (128, 128, 128)  # Grey when pressed
-        cv2.rectangle(frame, (x_start, 0), (x_end, black_key_height), color, -1)  # Keys at the top
+        color = (0, 0, 0)  # Default black color
+        if key_pressed_state[i + num_white_keys]:
+            color = (128, 128, 128)  # Change to grey when pressed
+        cv2.rectangle(frame, (x_start, 0), (x_end, black_key_height), color, -1)
+        cv2.rectangle(frame, (x_start, 0), (x_end, black_key_height), (0, 0, 0), 2)
 
     # Check if hand landmarks are detected
     if result.multi_hand_landmarks:
         for hand_landmarks in result.multi_hand_landmarks:
             mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            # Check fingertip positions for each finger
             for i, tip_index in enumerate(fingertips_indices):
                 x_tip = int(hand_landmarks.landmark[tip_index].x * w)
                 y_tip = int(hand_landmarks.landmark[tip_index].y * h)
 
-                # Check if a key is pressed
                 key_index = check_key_press(x_tip, y_tip, white_keys, black_keys, white_key_height, black_key_height)
-                if key_index is not None:
-                    current_time = time.time()
+                current_time = time.time()
 
-                    if finger_on_key[i] != key_index:  # New key detected, play sound and start timer
-                        finger_on_key[i] = key_index
-                        key_press_timestamps[key_index] = current_time
-                        
-                        # Play the corresponding sound
-                        if key_index < len(white_sounds):
-                            white_sounds[key_index].play()
-                        elif key_index < len(white_sounds) + len(black_sounds):
-                            black_sounds[key_index - len(white_sounds)].play()
+                # If finger is on a key and the timer has expired or first time pressed
+                if key_index is not None and (finger_on_key[i] != key_index or current_time - last_played_time[key_index] > key_delay):
+                    last_played_time[key_index] = current_time
+                    finger_on_key[i] = key_index  # Update finger's current key
 
-                        key_pressed_state[key_index] = True
+                    # Play sound for white or black key
+                    if key_index < num_white_keys:
+                        white_sounds[key_index].play()
+                    else:
+                        black_sounds[key_index - num_white_keys].play()
 
-                    elif current_time - key_press_timestamps[key_index] > key_delay:
-                        # After the delay, just update the timestamp to prevent sound replay
-                        key_press_timestamps[key_index] = current_time
-                else:
-                    finger_on_key[i] = -1  # Finger is not on any key
-                    key_pressed_state = [False] * len(key_pressed_state)  # Reset the key pressed states
+                    # Mark the key as pressed
+                    key_pressed_state[key_index] = True
 
-    # Display the frame with piano keys and hand detection
+                # If finger leaves the key, reset state for that key
+                if key_index is None:
+                    if finger_on_key[i] != -1:
+                        key_pressed_state[finger_on_key[i]] = False  # Reset only the specific key
+                    finger_on_key[i] = -1
+
+    else:
+        # Reset keys if no hands are detected
+        key_pressed_state = [False] * (num_white_keys + num_black_keys)
+        finger_on_key = [-1] * len(fingertips_indices)
+
     cv2.imshow('Virtual Piano', frame)
 
-    # Exit when 'q' is pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Release the webcam and close windows
 cap.release()
 cv2.destroyAllWindows()
 hands.close()
