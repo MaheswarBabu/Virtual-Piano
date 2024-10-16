@@ -161,4 +161,3 @@ cap.release()
 cv2.destroyAllWindows()
 hands.close()
 pygame.quit()
-can u make it so that the timer doesnt start until the finger is off the keys
