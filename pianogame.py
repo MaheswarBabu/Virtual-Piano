@@ -52,11 +52,13 @@ key_pressed_state = [False] * (num_white_keys + num_black_keys)
 # Store the key being pressed by each finger
 finger_on_key = [-1] * len(fingertips_indices)
 
-# Minimum time to allow repeated sound
-key_delay = 0.5  # 0.5 second delay between re-pressing the same key
+# Minimum time to allow repeated sound and key visual state
+key_delay = 5  # 5 second delay between re-pressing the same key
+visual_press_duration = 0.70  # Key remains visually pressed for 0.7 second
 
 # Track which key was played last by each finger and when
 last_played_time = [0] * (num_white_keys + num_black_keys)
+last_visual_press_time = [0] * (num_white_keys + num_black_keys)  # Track visual press state timing
 
 def check_key_press(x, y, white_keys, black_keys, white_key_height, black_key_height):
     # Increased detection range for white keys
@@ -98,17 +100,19 @@ while cap.isOpened():
 
     # Draw white piano keys
     for i, (x_start, x_end) in enumerate(white_keys):
+        current_time = time.time()
         color = (255, 255, 255)  # Default white color
-        if key_pressed_state[i]:
-            color = (192, 192, 192)  # Change to grey when pressed
+        if key_pressed_state[i] and (current_time - last_visual_press_time[i] < visual_press_duration):
+            color = (192, 192, 192)  # Change to grey when visually pressed
         cv2.rectangle(frame, (x_start, 0), (x_end, white_key_height), color, -1)
         cv2.rectangle(frame, (x_start, 0), (x_end, white_key_height), (0, 0, 0), 2)  # Borders
 
     # Draw black piano keys
     for i, (x_start, x_end) in enumerate(black_keys):
+        current_time = time.time()
         color = (0, 0, 0)  # Default black color
-        if key_pressed_state[i + num_white_keys]:
-            color = (128, 128, 128)  # Change to grey when pressed
+        if key_pressed_state[i + num_white_keys] and (current_time - last_visual_press_time[i + num_white_keys] < visual_press_duration):
+            color = (128, 128, 128)  # Change to grey when visually pressed
         cv2.rectangle(frame, (x_start, 0), (x_end, black_key_height), color, -1)
         cv2.rectangle(frame, (x_start, 0), (x_end, black_key_height), (0, 0, 0), 2)
 
@@ -135,18 +139,17 @@ while cap.isOpened():
                     else:
                         black_sounds[key_index - num_white_keys].play()
 
-                    # Mark the key as pressed
+                    # Mark the key as pressed and track visual press time
                     key_pressed_state[key_index] = True
+                    last_visual_press_time[key_index] = current_time
 
                 # If finger leaves the key, reset state for that key
                 if key_index is None:
                     if finger_on_key[i] != -1:
-                        key_pressed_state[finger_on_key[i]] = False  # Reset only the specific key
-                    finger_on_key[i] = -1
+                        finger_on_key[i] = -1
 
     else:
-        # Reset keys if no hands are detected
-        key_pressed_state = [False] * (num_white_keys + num_black_keys)
+        # Reset key states if no hands are detected
         finger_on_key = [-1] * len(fingertips_indices)
 
     cv2.imshow('Virtual Piano', frame)
@@ -158,3 +161,4 @@ cap.release()
 cv2.destroyAllWindows()
 hands.close()
 pygame.quit()
+can u make it so that the timer doesnt start until the finger is off the keys
